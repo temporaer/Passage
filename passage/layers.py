@@ -29,12 +29,13 @@ class Generic(object):
 
     size is input dimensionality
     weights is used internally for saving/loading
+    input can be used for debugging via input.tag.test_value
     """
 
-    def __init__(self, size, weights=None):
+    def __init__(self, size, weights=None, input=T.tensor3()):
         self.settings = locals()
         del self.settings['self']
-        self.input = T.tensor3()
+        self.input = input
         self.size = size
         self.params = []
 
@@ -294,6 +295,7 @@ class Dense(object):
                 param.set_value(floatX(weight))            
 
     def output(self, pre_act=False, dropout_active=False):
+        # from IPython.core.debugger import Tracer; Tracer()()
         X = self.l_in.output(dropout_active=dropout_active)
         if self.p_drop > 0. and dropout_active:
             X = dropout(X, self.p_drop)

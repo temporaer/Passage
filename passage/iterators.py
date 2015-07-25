@@ -59,7 +59,11 @@ class Linear(object):
             shape[1] = 0
             shape = tuple(shape)
             xmb = xmb.transpose(*shape)
-            yield xmb, self.y_dtype(ymb)
+            ymb = self.y_dtype(ymb)
+            if ymb.ndim == 3:
+                # sequence prediction! also reorder ymb.
+                ymb = ymb.transpose(*shape)
+            yield xmb, ymb
 
 class Padded(object):
 

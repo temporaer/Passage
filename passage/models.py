@@ -114,6 +114,9 @@ class RNN(object):
         for xmb in self.iterator.iterX(X):
             pred = self._predict(xmb)
             preds.append(pred)
+        if preds[0].ndim == 3:
+            # sequence prediction
+            return np.concatenate(preds, axis=1)
         return np.vstack(preds)
 
     def predict_idxs(self, X):
