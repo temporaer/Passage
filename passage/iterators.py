@@ -2,16 +2,22 @@ import numpy as np
 
 from utils import shuffle, iter_data
 from theano_utils import floatX, intX
+from collections import Iterable
 
 def _padded(seqs):
     lens = map(len, seqs)
     max_len = max(lens)
     seqs_padded = []
+    feature0 = seqs[0][0]
+    if isinstance(feature0, Iterable):
+        feature0 = np.zeros_like(feature0)
+    else:
+        feature0 = 0
     for seq, seq_len in zip(seqs, lens):
         n_pad = max_len - seq_len 
-        seq = [0] * n_pad + seq
+        seq = [feature0] * n_pad + seq
         seqs_padded.append(seq)
-    return np.asarray(seqs_padded).transpose(1, 0)
+    return np.rollaxis(np.asarray(seqs_padded), 1, 0)
 
 class Linear(object):
     """
