@@ -4,10 +4,18 @@ from utils import shuffle, iter_data
 from theano_utils import floatX, intX
 from collections import Iterable
 
-def _padded(seqs):
+def _padded(seqs, return_sizes=False):
+    if False:
+        # ret = np.rollaxis(np.asarray(seqs),1,0)
+        ret = np.asarray(seqs)
+        print "_padded: ", ret.shape
+        if return_sizes:
+            return ret, np.ones_like(ret)
+        return ret
     lens = map(len, seqs)
     max_len = max(lens)
     seqs_padded = []
+    padding_sizes = []
     feature0 = seqs[0][0]
     if isinstance(feature0, Iterable):
         feature0 = np.zeros_like(feature0)
@@ -15,9 +23,18 @@ def _padded(seqs):
         feature0 = 0
     for seq, seq_len in zip(seqs, lens):
         n_pad = max_len - seq_len 
-        seq = [feature0] * n_pad + seq
+        if return_sizes:
+            p = np.ones(max_len)
+            p[:n_pad] = 0
+            padding_sizes.append(p)
+        if n_pad > 0:
+            seq = np.vstack(([feature0] * n_pad, seq))
         seqs_padded.append(seq)
-    return np.rollaxis(np.asarray(seqs_padded), 1, 0)
+
+    ret = np.rollaxis(np.asarray(seqs_padded), 1, 0)
+    if return_sizes:
+        return ret, np.array(padding_sizes)
+    return ret
 
 class Linear(object):
     """
@@ -76,8 +93,8 @@ class Padded(object):
     def iterX(self, X):
 
         for xmb in iter_data(X, size=self.size):
-            xmb = _padded(xmb)
-            yield self.x_dtype(xmb)
+            xmb, padsizes = _padded(xmb, return_sizes=True)
+            yield self.x_dtype(xmb), padsizes.T
 
     def iterXY(self, X, Y):
         
@@ -86,7 +103,12 @@ class Padded(object):
 
         for xmb, ymb in iter_data(X, Y, size=self.size):
             xmb = _padded(xmb)
-            yield self.x_dtype(xmb), self.y_dtype(ymb)
+            if ymb[0].ndim == 2:
+                # sequence prediction
+                ymb, padsize = _padded(ymb, return_sizes=True)
+                yield self.x_dtype(xmb), (self.y_dtype(ymb), padsize.T)
+            else:
+                yield self.x_dtype(xmb), self.y_dtype(ymb)
 
 class SortedPadded(object):
 
@@ -118,4 +140,8 @@ class SortedPadded(object):
             mb_chunks = shuffle(mb_chunks)
             for xmb, ymb in mb_chunks:
                 xmb = _padded(xmb)
-                yield self.x_dtype(xmb), self.y_dtype(ymb)  
+                if ymb.ndim == 3:
+                    ymb, padsize = _padded(ymb, return_sizes=True)
+                    yield self.x_dtype(xmb), (self.y_dtype(ymb), padsize.T)
+                else:
+                    yield self.x_dtype(xmb), self.y_dtype(ymb)

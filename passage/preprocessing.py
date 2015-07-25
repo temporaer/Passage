@@ -72,7 +72,7 @@ def token_encoder(texts, max_features=9997, min_df=10):
     return xtoi
 
 def standardize_targets(Y, cost):
-    if cost.__name__ == 'CategoricalSequenceCrossEntropy':
+    if cost.__name__ in ['CategoricalSequenceCrossEntropy', 'CategoricalPaddedSequenceCrossEntropy']:
         tmp = np.array(Y[0])
         if tmp.ndim == 1:
             tmp = tmp.reshape(-1, 1)
@@ -80,7 +80,7 @@ def standardize_targets(Y, cost):
             # this is a sequence prediction dataset that needs to be transformed to one-hot encoding
             n_classes = max(map(max, Y))+1
             # transform every component in Y separately.
-            Y = np.array([one_hot(y, n=n_classes, negative_class=0.) for y in Y])
+            Y = [one_hot(y, n=n_classes, negative_class=0.) for y in Y]
     else:
         Y = np.asarray(Y)
         ndim = len(Y.shape)

@@ -35,6 +35,11 @@ class RNN(object):
         else:
             self.iterator = iterator
 
+        # True if output is a padded sequence
+        # Padded elements should not contribute to the loss
+        # and should be removed before returning predictions.
+        self.is_padseq_output = self.cost.__name__ in ['CategoricalPaddedSequenceCrossEntropy']
+
         self.verbose = verbose
         for i in range(1, len(self.layers)):
             self.layers[i].connect(self.layers[i-1])
@@ -45,11 +50,22 @@ class RNN(object):
         self.y_te = self.layers[-1].output(dropout_active=False)
         self.Y = Y
 
-        cost = self.cost(self.Y, self.y_tr)
-        self.updates = self.updater.get_updates(self.params, cost)
 
-        self._train = theano.function([self.X, self.Y], cost, updates=self.updates)
-        self._cost = theano.function([self.X, self.Y], cost)
+        if self.is_padseq_output:
+            # P codes whether a sequence element was created by padding
+            # so that it can be ignored in the loss computation.
+            # 0 for padded elements, 1 for not-padded elements
+            self.P = T.matrix()
+            cost = self.cost(self.Y, self.y_tr, self.P)
+        else:
+            cost = self.cost(self.Y, self.y_tr)
+        self.updates = self.updater.get_updates(self.params, cost)
+        if self.is_padseq_output:
+            self._train = theano.function([self.X, self.Y, self.P], cost, updates=self.updates)
+            self._cost = theano.function([self.X, self.Y, self.P], cost)
+        else:
+            self._train = theano.function([self.X, self.Y], cost, updates=self.updates)
+            self._cost = theano.function([self.X, self.Y], cost)
         self._predict = theano.function([self.X], self.y_te)
 
     def fit(self, trX, trY, batch_size=64, n_epochs=1, len_filter=LenFilter(), snapshot_freq=1, path=None):
@@ -79,7 +95,11 @@ class RNN(object):
         for e in range(n_epochs):
             epoch_costs = []
             for xmb, ymb in self.iterator.iterXY(trX, trY):
-                c = self._train(xmb, ymb)
+                if not self.is_padseq_output:
+                    c = self._train(xmb, ymb)
+                else:
+                    ymb, padsizes = ymb
+                    c = self._train(xmb, ymb, padsizes)
                 epoch_costs.append(c)
                 n += len(ymb)
                 if self.verbose >= 2:
@@ -111,13 +131,27 @@ class RNN(object):
 
     def predict_iterator(self, X):
         preds = []
+
         for xmb in self.iterator.iterX(X):
-            pred = self._predict(xmb)
-            preds.append(pred)
-        if preds[0].ndim == 3:
-            # sequence prediction
-            return np.concatenate(preds, axis=1)
-        return np.vstack(preds)
+            if self.is_padseq_output:
+                xmb, padsizes = xmb
+                pred = np.rollaxis(self._predict(xmb),1,0)
+                for pad, y in zip(padsizes.T, pred):
+                    # find index where padding ends
+                    n_pad = np.where(pad==1)[0][0]
+                    preds.append(y[n_pad:])
+            else:
+                pred = self._predict(xmb)
+                preds.append(pred)
+
+        if self.is_padseq_output:
+            # results can have different lengths
+            return preds
+        ret = np.concatenate(preds, axis=1)
+        if ret.ndim == 3:
+            # move example-axis to first position
+            return np.rollaxis(ret, 1, 0)
+        return ret
 
     def predict_idxs(self, X):
         preds = []
