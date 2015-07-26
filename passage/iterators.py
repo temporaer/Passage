@@ -113,11 +113,12 @@ class Padded(object):
 
 class SortedPadded(object):
 
-    def __init__(self, size=64, shuffle=True, x_dtype=intX, y_dtype=floatX):
+    def __init__(self, size=64, shuffle=True, x_dtype=intX, y_dtype=floatX, y_lag=0):
         self.size = size
         self.shuffle = shuffle
         self.x_dtype = x_dtype
         self.y_dtype = y_dtype
+        self.y_lag = y_lag
 
     def iterX(self, X):
         for x_chunk, chunk_idxs in iter_data(X, np.arange(len(X)), size=self.size*20):
@@ -125,8 +126,8 @@ class SortedPadded(object):
             x_chunk = [x_chunk[idx] for idx in sort]
             chunk_idxs = [chunk_idxs[idx] for idx in sort]
             for xmb, idxmb in iter_data(x_chunk, chunk_idxs, size=self.size):
-                xmb = _padded(xmb)
-                yield self.x_dtype(xmb), idxmb   
+                xmb, padsize = _padded(xmb, return_sizes=True, final=self.y_lag)
+                yield self.x_dtype(xmb), (idxmb, padsize.T)
 
     def iterXY(self, X, Y):
         
@@ -140,9 +141,9 @@ class SortedPadded(object):
             mb_chunks = [[x_chunk[idx:idx+self.size], y_chunk[idx:idx+self.size]] for idx in range(len(x_chunk))[::self.size]]
             mb_chunks = shuffle(mb_chunks)
             for xmb, ymb in mb_chunks:
-                xmb = _padded(xmb)
-                if ymb.ndim == 3:
-                    ymb, padsize = _padded(ymb, return_sizes=True)
+                xmb = _padded(xmb, final=self.y_lag)
+                if ymb[0].ndim == 2:
+                    ymb, padsize = _padded(ymb, return_sizes=True, initial=self.y_lag)
                     yield self.x_dtype(xmb), (self.y_dtype(ymb), padsize.T)
                 else:
                     yield self.x_dtype(xmb), self.y_dtype(ymb)

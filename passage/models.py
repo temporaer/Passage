@@ -157,7 +157,22 @@ class RNN(object):
         preds = []
         idxs = []
         for xmb, idxmb in self.iterator.iterX(X):
-            pred = self._predict(xmb)
-            preds.append(pred)
+            if self.is_padseq_output:
+                idxmb, padsizes = idxmb
+                pred = np.rollaxis(self._predict(xmb), 1, 0)
+                for pad, y in zip(padsizes.T, pred):
+                    # find index where padding ends
+                    n_pad = np.where(pad==1)[0][0]
+                    preds.append(y[n_pad:])
+            else:
+                pred = self._predict(xmb)
+                preds.append(pred)
             idxs.extend(idxmb)
-        return np.vstack(preds)[np.argsort(idxs)]
+        if self.is_padseq_output:
+            # results can have different lengths
+            return [preds[i] for i in np.argsort(idxs)]
+        ret = np.concatenate(preds, axis=1)
+        if ret.ndim == 3:
+            # move example-axis to first position
+            ret = np.rollaxis(ret, 1, 0)
+        return ret[np.argsort(idxs)]
