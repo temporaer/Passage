@@ -14,6 +14,8 @@ def flatten(l):
     return [item for sublist in l for item in sublist]
 
 class RNN(object):
+    class EarlyStoppingException(Exception):
+        pass
 
     def __init__(self, layers, cost, updater='Adam', verbose=2, Y=T.matrix(), iterator='SortedPadded'):
         self.settings = locals()
@@ -68,7 +70,7 @@ class RNN(object):
             self._cost = theano.function([self.X, self.Y], cost)
         self._predict = theano.function([self.X], self.y_te)
 
-    def fit(self, trX, trY, batch_size=64, n_epochs=1, len_filter=LenFilter(), snapshot_freq=1, path=None):
+    def fit(self, trX, trY, batch_size=64, n_epochs=1, len_filter=LenFilter(), snapshot_freq=1, path=None, callback=None, callback_freq=1):
         """Train model on given training examples and return the list of costs after each minibatch is processed.
 
         Args:
@@ -119,6 +121,11 @@ class RNN(object):
                 print status
             if path and e % snapshot_freq == 0:
                 save(self, "{0}.{1}".format(path, e))
+            if callback is not None and e % callback_freq == 0:
+                try:
+                    callback(e)
+                except RNN.EarlyStoppingException:
+                    break
         return costs
 
     def predict(self, X):
