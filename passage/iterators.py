@@ -4,14 +4,7 @@ from utils import shuffle, iter_data
 from theano_utils import floatX, intX
 from collections import Iterable
 
-def _padded(seqs, return_sizes=False):
-    if False:
-        # ret = np.rollaxis(np.asarray(seqs),1,0)
-        ret = np.asarray(seqs)
-        print "_padded: ", ret.shape
-        if return_sizes:
-            return ret, np.ones_like(ret)
-        return ret
+def _padded(seqs, return_sizes=False, initial=0, final=0):
     lens = map(len, seqs)
     max_len = max(lens)
     seqs_padded = []
@@ -22,13 +15,20 @@ def _padded(seqs, return_sizes=False):
     else:
         feature0 = 0
     for seq, seq_len in zip(seqs, lens):
-        n_pad = max_len - seq_len 
+        n_pad = max_len - seq_len + initial
         if return_sizes:
-            p = np.ones(max_len)
+            p = np.ones(max_len + initial + final)
             p[:n_pad] = 0
+            if final > 0:
+                p[-final:] = 0
             padding_sizes.append(p)
-        if n_pad > 0:
-            seq = np.vstack(([feature0] * n_pad, seq))
+        L = []
+        if n_pad > 0 :
+            L.append([feature0] * n_pad)
+        L.append(seq)
+        if final > 0 :
+            L.append([feature0] * final)
+        seq = np.vstack(L)
         seqs_padded.append(seq)
 
     ret = np.rollaxis(np.asarray(seqs_padded), 1, 0)
@@ -84,16 +84,17 @@ class Linear(object):
 
 class Padded(object):
 
-    def __init__(self, size=64, shuffle=True, x_dtype=intX, y_dtype=floatX):
+    def __init__(self, size=64, shuffle=True, x_dtype=intX, y_dtype=floatX, y_lag=0):
         self.size = size
         self.shuffle = shuffle
         self.x_dtype = x_dtype
         self.y_dtype = y_dtype
+        self.y_lag = y_lag
 
     def iterX(self, X):
 
         for xmb in iter_data(X, size=self.size):
-            xmb, padsizes = _padded(xmb, return_sizes=True)
+            xmb, padsizes = _padded(xmb, return_sizes=True, final=self.y_lag)
             yield self.x_dtype(xmb), padsizes.T
 
     def iterXY(self, X, Y):
@@ -102,10 +103,10 @@ class Padded(object):
             X, Y = shuffle(X, Y)
 
         for xmb, ymb in iter_data(X, Y, size=self.size):
-            xmb = _padded(xmb)
+            xmb = _padded(xmb, final=self.y_lag)
             if ymb[0].ndim == 2:
                 # sequence prediction
-                ymb, padsize = _padded(ymb, return_sizes=True)
+                ymb, padsize = _padded(ymb, return_sizes=True, initial=self.y_lag)
                 yield self.x_dtype(xmb), (self.y_dtype(ymb), padsize.T)
             else:
                 yield self.x_dtype(xmb), self.y_dtype(ymb)
